@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>王阿姨工作日历 · 共享记录表</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f4ef; --card:#ffffff; --ink:#2f2a26; --muted:#8a8178;
+    --line:#ece7df; --accent:#e8a23d;
+    --work:#5bb98c; --work-bg:#e9f6ef;
+    --rest:#e8786a; --rest-bg:#fdecea;
+    --legal:#4a90d9; --legal-bg:#e8f1fb;
+    --shadow:0 6px 20px rgba(120,100,70,.10);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:linear-gradient(180deg,#faf8f3 0%,#f3efe7 100%);color:var(--ink);
+    padding:24px 16px 60px;line-height:1.5}
+  .wrap{max-width:1060px;margin:0 auto}
+  header{text-align:center;margin-bottom:18px}
+  header h1{font-size:25px;font-weight:800;letter-spacing:1px}
+  header .sub{color:var(--muted);font-size:14px;margin-top:6px}
+  header .sub b{color:var(--accent)}
+  .toolbar{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+  .toolbar button{border:1px solid var(--line);background:#fff;color:var(--ink);
+    padding:7px 14px;border-radius:999px;cursor:pointer;font-size:13px;font-weight:600;transition:.15s}
+  .toolbar button:hover{border-color:var(--accent)}
+  .toolbar button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+  .syncbar{text-align:center;font-size:12px;color:var(--muted);margin-bottom:14px}
+  .syncbar .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--work);margin-right:5px;vertical-align:middle}
+  .syncbar .dot.off{background:#bbb}
+
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+  .stat{background:var(--card);border-radius:16px;padding:14px 8px;text-align:center;box-shadow:var(--shadow)}
+  .stat .num{font-size:25px;font-weight:800}
+  .stat .lbl{font-size:12px;color:var(--muted);margin-top:3px}
+  .stat.s-work .num{color:var(--work)} .stat.s-rest .num{color:var(--rest)}
+  .stat.s-legal .num{color:var(--legal)}
+
+  .panel{background:var(--card);border-radius:18px;box-shadow:var(--shadow);padding:18px;margin-bottom:18px}
+  .panel h3{font-size:16px;margin-bottom:4px}
+  .panel .desc{color:var(--muted);font-size:12px;margin-bottom:14px}
+
+  .settle-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .periods{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .pcard{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fcfbf8}
+  .pcard.settled{border-color:#cdeede;background:var(--work-bg)}
+  .pc-top{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+  .pc-name{font-weight:800;font-size:15px}
+  .pc-range{font-size:11px;color:var(--muted)}
+  .pc-sub{font-size:11px;color:var(--muted);margin:4px 0 10px}
+  .pc-edit{display:flex;gap:10px}
+  .pc-edit>div{flex:1}
+  .pc-edit label{display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px}
+  .pc-edit select,.pc-edit input{width:100%;padding:7px 8px;border:1px solid var(--line);
+    border-radius:9px;font-size:13px;font-family:inherit;background:#fff}
+
+  .tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .tab{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:#fbfaf7;
+    cursor:pointer;font-size:13px;color:var(--muted);transition:.15s;display:flex;align-items:center;gap:6px}
+  .tab:hover{border-color:var(--accent)}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700}
+  .tab .badge{font-size:10px;background:#fff;color:var(--accent);border-radius:6px;padding:1px 5px;font-weight:700}
+  .tab.active .badge{background:rgba(255,255,255,.25);color:#fff}
+
+  .controls{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+  .filters{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{padding:6px 12px;border-radius:999px;border:1px solid var(--line);cursor:pointer;font-size:12px;
+    background:#fbfaf7;color:var(--muted);user-select:none}
+  .chip.on{color:#fff;font-weight:700}
+  .chip.c-work.on{background:var(--work);border-color:var(--work)}
+  .chip.c-rest.on{background:var(--rest);border-color:var(--rest)}
+  .chip.c-legal.on{background:var(--legal);border-color:var(--legal)}
+  .toggle{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .toggle button{border:none;background:#fbfaf7;padding:7px 16px;cursor:pointer;font-size:13px;color:var(--muted)}
+  .toggle button.on{background:var(--ink);color:#fff;font-weight:700}
+
+  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:12px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:12px;height:12px;border-radius:4px;display:inline-block}
+  .dot.work{background:var(--work)} .dot.rest{background:var(--rest)} .dot.legal{background:var(--legal)}
+
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+  .cal-head{text-align:center;font-size:12px;color:var(--muted);font-weight:700;padding:4px 0}
+  .day{position:relative;border-radius:12px;padding:8px 6px 6px;min-height:66px;border:1px solid var(--line);
+    background:#fcfbf8;display:flex;flex-direction:column;cursor:pointer;transition:.12s}
+  .day:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+  .day.empty{background:transparent;border:none;cursor:default;box-shadow:none;transform:none}
+  .day.work{background:var(--work-bg);border-color:#cdeede}
+  .day.rest{background:var(--rest-bg);border-color:#f7cfc9}
+  .day.legal{background:var(--legal-bg);border-color:#cfe1f6}
+  .day .dnum{font-size:15px;font-weight:800}
+  .day .wd{font-size:10px;color:var(--muted);margin-top:1px}
+  .day .note{font-size:11px;margin-top:4px;color:#5a534c;background:rgba(255,255,255,.6);
+    border-radius:6px;padding:2px 4px;line-height:1.25}
+  .day .tag{position:absolute;top:6px;right:6px;font-size:9px;padding:1px 5px;border-radius:6px;color:#fff;font-weight:700}
+  .day.work .tag{background:var(--work)} .day.rest .tag{background:var(--rest)} .day.legal .tag{background:var(--legal)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:700;font-size:12px;background:#fbfaf7}
+  td .pill{font-size:11px;padding:2px 9px;border-radius:999px;color:#fff;font-weight:700}
+  .pill.work{background:var(--work)} .pill.rest{background:var(--rest)} .pill.legal{background:var(--legal)}
+  tbody tr{cursor:pointer} tbody tr:hover{background:#faf8f3}
+
+  .chart h3{font-size:15px;margin-bottom:14px}
+  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .bar-row .mlbl{width:84px;font-size:12px;color:var(--muted);flex-shrink:0}
+  .bar-track{flex:1;height:22px;background:#f1ede6;border-radius:6px;overflow:hidden;display:flex}
+  .bar-track .seg{height:100%;display:flex;align-items:center;justify-content:flex-end;font-size:10px;color:#fff;font-weight:700;padding-right:4px}
+  .seg.work{background:var(--work)} .seg.rest{background:var(--rest)} .seg.legal{background:var(--legal)}
+  .bar-row .mtot{width:42px;text-align:right;font-size:12px;font-weight:700;flex-shrink:0}
+
+  .modal{position:fixed;inset:0;background:rgba(40,34,28,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .modal-card{background:#fff;border-radius:18px;padding:22px;width:340px;max-width:100%;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+  .modal-card h2{font-size:17px;margin-bottom:14px}
+  .modal-card label{display:block;font-size:12px;color:var(--muted);margin:12px 0 5px;font-weight:700}
+  .modal-card select,.modal-card input{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit}
+  .modal-actions{display:flex;gap:10px;margin-top:20px}
+  .modal-actions button{flex:1;padding:10px;border-radius:10px;border:none;cursor:pointer;font-size:14px;font-weight:700}
+  .modal-actions .cancel{background:#f1ede6;color:var(--ink)}
+  .modal-actions .save{background:var(--accent);color:#fff}
+
+  /* login */
+  #login{position:fixed;inset:0;background:linear-gradient(180deg,#faf8f3,#efe9df);display:flex;align-items:center;justify-content:center;z-index:100}
+  .login-card{background:#fff;border-radius:20px;box-shadow:var(--shadow);padding:30px 26px;width:340px;max-width:90%;text-align:center}
+  .login-card h2{font-size:20px;margin-bottom:6px}
+  .login-card p{color:var(--muted);font-size:13px;margin-bottom:18px}
+  .login-card input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px;text-align:center;letter-spacing:3px;font-family:inherit}
+  .login-card button{width:100%;margin-top:14px;padding:12px;border:none;border-radius:12px;background:var(--accent);color:#fff;font-size:15px;font-weight:700;cursor:pointer}
+  .login-card .err{color:var(--rest);font-size:12px;margin-top:10px;min-height:16px}
+
+  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:24px}
+  .hint{text-align:center;color:var(--muted);font-size:12px;margin:-6px 0 14px}
+  @media(max-width:680px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .settle-stats{grid-template-columns:repeat(2,1fr)}
+    .periods{grid-template-columns:1fr}
+    .day{min-height:56px;padding:6px 3px}
+    .day .note{font-size:10px}
+    .bar-row .mlbl{width:60px}
+  }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="login-card">
+    <h2>王阿姨工作日历</h2>
+    <p>请输入查看密码</p>
+    <input id="pw" type="password" inputmode="numeric" placeholder="••••••" autocomplete="off">
+    <button id="pw-btn">进入</button>
+    <div class="err" id="pw-err"></div>
+  </div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
+  <header>
+    <h1>王阿姨工作日历 · 共享记录表</h1>
+    <div class="sub">统计周期 <b id="period"></b> ｜ 共 <b id="total"></b> 天 ｜ <b id="mc"></b> 个月</div>
+    <div class="toolbar">
+      <button id="btn-xlsx" class="primary">导出 Excel</button>
+      <button id="btn-json">导出 JSON</button>
+    </div>
+  </header>
+
+  <div class="syncbar"><span class="dot" id="sync-dot"></span><span id="sync-text">已连接 · 多人实时同步</span></div>
+
+  <div class="stats">
+    <div class="stat"><div class="num" id="t-total"></div><div class="lbl">总天数</div></div>
+    <div class="stat s-work"><div class="num" id="t-work"></div><div class="lbl">工作日</div></div>
+    <div class="stat s-rest"><div class="num" id="t-rest"></div><div class="lbl">休息日</div></div>
+    <div class="stat s-legal"><div class="num" id="t-legal"></div><div class="lbl">法定日</div></div>
+    <div class="stat"><div class="num" id="t-note"></div><div class="lbl">有备注天数</div></div>
+  </div>
+
+  <div class="panel">
+    <h3>工资结算（每月 7 号结算，按期结算）</h3>
+    <div class="desc">每个工作周期约一个月，于次月 7 号结算。可编辑每期「结算状态」与「结算金额」，改动全员同步。</div>
+    <div class="settle-stats">
+      <div class="stat"><div class="num" id="p-settled"></div><div class="lbl">已结算期数</div></div>
+      <div class="stat"><div class="num" id="p-unsettled"></div><div class="lbl">未结算期数</div></div>
+      <div class="stat s-work"><div class="num" id="p-amt"></div><div class="lbl">已结算金额(¥)</div></div>
+      <div class="stat s-rest"><div class="num" id="p-due"></div><div class="lbl">待结算金额(¥)</div></div>
+    </div>
+    <div class="periods" id="periods"></div>
+  </div>
+
+  <div class="panel">
+    <div class="tabs" id="tabs"></div>
+    <div class="controls">
+      <div class="filters">
+        <div class="chip c-work on" data-f="工作日">工作日</div>
+        <div class="chip c-rest on" data-f="休息日">休息日</div>
+        <div class="chip c-legal on" data-f="法定日">法定日</div>
+      </div>
+      <div class="toggle">
+        <button id="btn-cal" class="on">日历视图</button>
+        <button id="btn-list">列表视图</button>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="dot work"></i>工作日</span>
+      <span><i class="dot rest"></i>休息日</span>
+      <span><i class="dot legal"></i>法定日</span>
+    </div>
+    <div class="hint">点击任意日期格子即可编辑 出勤状态 / 备注，修改自动同步给所有人</div>
+    <div id="cal-view"><div class="cal-grid" id="cal-head"></div><div class="cal-grid" id="cal-body"></div></div>
+    <div id="list-view" style="display:none"></div>
+  </div>
+
+  <div class="panel chart">
+    <h3>各月出勤构成</h3>
+    <div id="bars"></div>
+  </div>
+
+  <footer>共享后端存储 · 密码保护 · 谁修改大家都能实时看到</footer>
+</div>
+
+<div class="modal" id="modal" style="display:none">
+  <div class="modal-card">
+    <h2 id="m-title"></h2>
+    <label>出勤状态</label>
+    <select id="m-status">
+      <option value="工作日">工作日</option>
+      <option value="休息日">休息日</option>
+      <option value="法定日">法定日</option>
+    </select>
+    <label>备注</label>
+    <input id="m-note" type="text" placeholder="可选">
+    <div class="modal-actions">
+      <button class="cancel" id="m-cancel">取消</button>
+      <button class="save" id="m-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STATUS_COLOR={"工作日":"work","休息日":"rest","法定日":"legal"};
+const TAG={"工作日":"班","休息日":"休","法定日":"法"};
+let PW="", DATA=null, editing=false, pollTimer=null, curMonth=null, view="cal";
+let filters={"工作日":true,"休息日":true,"法定日":true};
+let editDate=null;
+
+function fmtMoney(n){ n=Number(n)||0; return n.toLocaleString("zh-CN",{minimumFractionDigits:0,maximumFractionDigits:2}); }
+function setSync(on,text){ document.getElementById("sync-dot").className="dot"+(on?"":" off"); document.getElementById("sync-text").textContent=text; }
+
+async function apiGet(){ const r=await fetch("/api/data",{headers:{"X-Password":PW}}); if(r.status===401) throw new Error("unauth"); return r.json(); }
+async function apiPost(){ const r=await fetch("/api/data",{method:"POST",headers:{"X-Password":PW,"Content-Type":"application/json"},
+  body:JSON.stringify({meta:DATA.meta,months:DATA.months,records:DATA.records,periods:DATA.periods})}); return r.ok; }
+
+async function doLogin(){
+  const pw=document.getElementById("pw").value;
+  const r=await fetch("/api/data",{headers:{"X-Password":pw}});
+  if(r.status===200){ PW=pw; DATA=await r.json(); document.getElementById("login").style.display="none";
+    document.getElementById("app").style.display="block"; boot(); return; }
+  document.getElementById("pw-err").textContent="密码错误，请重试";
+}
+
+function boot(){
+  curMonth=DATA.meta.period_start.slice(0,7);
+  // 顶部汇总
+  document.getElementById("period").textContent=DATA.meta.period_start+" ~ "+DATA.meta.period_end;
+  document.getElementById("total").textContent=DATA.meta.total;
+  document.getElementById("mc").textContent=DATA.meta.month_count;
+  document.getElementById("t-total").textContent=DATA.meta.total;
+  document.getElementById("t-work").textContent=DATA.meta.work;
+  document.getElementById("t-rest").textContent=DATA.meta.rest;
+  document.getElementById("t-legal").textContent=DATA.meta.legal;
+  document.getElementById("t-note").textContent=DATA.records.filter(r=>r.note).length;
+  buildPeriods(); updateSettleSummary(); buildTabs(); buildCalHead(); render(); buildBars();
+  startPoll();
+}
+
+function updateSettleSummary(){
+  let sd=0,su=0,amt=0,due=0;
+  DATA.periods.forEach(p=>{ const a=Number(p.amount)||0; if(p.status==="已结算"){sd++;amt+=a;}else{su++;due+=a;} });
+  document.getElementById("p-settled").textContent=sd;
+  document.getElementById("p-unsettled").textContent=su;
+  document.getElementById("p-amt").textContent=fmtMoney(amt);
+  document.getElementById("p-due").textContent=fmtMoney(due);
+}
+
+const periodsEl=document.getElementById("periods");
+function buildPeriods(){
+  periodsEl.innerHTML="";
+  DATA.periods.forEach((p,i)=>{
+    const card=document.createElement("div");
+    card.className="pcard"+(p.status==="已结算"?" settled":"");
+    const sd=p.status==="已结算";
+    card.innerHTML=`<div class="pc-top"><span class="pc-name">${p.name}</span><span class="pc-range">${p.start} ~ ${p.end}</span></div>`+
+      `<div class="pc-sub">结算日 ${p.settleDay} ｜ 出勤 ${p.days} 天</div>`+
+      `<div class="pc-edit">`+
+        `<div><label>状态</label><select class="p-status" data-i="${i}">`+
+          `<option value="已结算" ${sd?"selected":""}>已结算</option>`+
+          `<option value="未结算" ${!sd?"selected":""}>未结算</option></select></div>`+
+        `<div><label>结算金额(元)</label><input type="number" min="0" step="0.01" class="p-amount" data-i="${i}" value="${p.amount===""?"":p.amount}" placeholder="待填"></div>`+
+      `</div>`;
+    periodsEl.appendChild(card);
+  });
+  periodsEl.querySelectorAll(".p-status").forEach(s=>s.onchange=async e=>{
+    const i=+e.target.dataset.i; DATA.periods[i].status=e.target.value;
+    e.target.closest(".pcard").classList.toggle("settled",e.target.value==="已结算");
+    updateSettleSummary(); setSync(false,"保存中…"); await apiPost(); setSync(true,"已连接 · 多人实时同步");
+  });
+  periodsEl.querySelectorAll(".p-amount").forEach(inp=>{
+    inp.onfocus=()=>editing=true;
+    inp.onchange=async e=>{ const i=+e.target.dataset.i,v=e.target.value.trim();
+      DATA.periods[i].amount=(v===""?"":Number(v)); updateSettleSummary();
+      setSync(false,"保存中…"); await apiPost(); setSync(true,"已连接 · 多人实时同步"); editing=false; };
+  });
+}
+
+const tabsEl=document.getElementById("tabs");
+function buildTabs(){
+  tabsEl.innerHTML="";
+  Object.keys(DATA.months).forEach(ym=>{
+    const m=DATA.months[ym];
+    const btn=document.createElement("div");
+    btn.className="tab"+(ym===curMonth?" active":""); btn.dataset.ym=ym;
+    btn.innerHTML=`${parseInt(ym.split("-")[1])}月`+(m.settled?'<span class="badge">已结算</span>':'');
+    btn.onclick=()=>{ curMonth=ym; [...tabsEl.children].forEach(t=>t.classList.toggle("active",t.dataset.ym===curMonth)); render(); };
+    tabsEl.appendChild(btn);
+  });
+}
+const headEl=document.getElementById("cal-head");
+function buildCalHead(){ headEl.innerHTML=""; ["一","二","三","四","五","六","日"].forEach(w=>{ const d=document.createElement("div"); d.className="cal-head"; d.textContent=w; headEl.appendChild(d); }); }
+
+function render(){
+  if(view==="cal"){ document.getElementById("cal-view").style.display="block"; document.getElementById("list-view").style.display="none"; renderCal(); }
+  else { document.getElementById("cal-view").style.display="none"; document.getElementById("list-view").style.display="block"; renderList(); }
+}
+function renderCal(){
+  const ym=curMonth, body=document.getElementById("cal-body"); body.innerHTML="";
+  const [y,mo]=ym.split("-").map(Number);
+  const off=(new Date(y,mo-1,1).getDay()+6)%7;
+  for(let i=0;i<off;i++){ const e=document.createElement("div"); e.className="day empty"; body.appendChild(e); }
+  const days=new Date(y,mo,0).getDate();
+  const recMap={};
+  DATA.records.filter(r=>r.date.startsWith(ym)).forEach(r=>recMap[parseInt(r.date.slice(8,10))]=r);
+  for(let d=1; d<=days; d++){
+    const rec=recMap[d], cell=document.createElement("div");
+    if(!rec || !filters[rec.status]){ cell.className="day empty"; body.appendChild(cell); continue; }
+    const st=STATUS_COLOR[rec.status]||"work";
+    cell.className="day "+st;
+    cell.innerHTML=`<span class="tag">${TAG[rec.status]}</span><div class="dnum">${d}</div><div class="wd">${rec.weekday}</div>`+(rec.note?`<div class="note">${rec.note}</div>`:"");
+    cell.onclick=()=>openEditor(rec.date); body.appendChild(cell);
+  }
+}
+function renderList(){
+  const ym=curMonth;
+  const rows=DATA.records.filter(r=>r.date.startsWith(ym)&&filters[r.status]).sort((a,b)=>a.date<b.date?-1:1);
+  let html=`<table><thead><tr><th>日期</th><th>星期</th><th>状态</th><th>备注</th></tr></thead><tbody>`;
+  rows.forEach(r=>{ const st=STATUS_COLOR[r.status]||"work";
+    html+=`<tr data-date="${r.date}"><td>${r.date}</td><td>${r.weekday}</td><td><span class="pill ${st}">${r.status}</span></td><td>${r.note||"—"}</td></tr>`; });
+  html+=`</tbody></table>`;
+  const el=document.getElementById("list-view"); el.innerHTML=html;
+  el.querySelectorAll("tr[data-date]").forEach(tr=>tr.onclick=()=>openEditor(tr.dataset.date));
+}
+
+const modal=document.getElementById("modal");
+function openEditor(date){ const r=DATA.records.find(x=>x.date===date); if(!r) return; editDate=date; editing=true;
+  document.getElementById("m-title").textContent=`${r.date}（${r.weekday}）`;
+  document.getElementById("m-status").value=r.status; document.getElementById("m-note").value=r.note||"";
+  modal.style.display="flex"; }
+function closeEditor(){ modal.style.display="none"; editDate=null; editing=false; }
+document.getElementById("m-cancel").onclick=closeEditor;
+modal.onclick=e=>{ if(e.target===modal) closeEditor(); };
+document.getElementById("m-save").onclick=async ()=>{
+  const r=DATA.records.find(x=>x.date===editDate); if(!r) return;
+  r.status=document.getElementById("m-status").value; r.note=document.getElementById("m-note").value.trim();
+  closeEditor(); setSync(false,"保存中…"); await apiPost(); setSync(true,"已连接 · 多人实时同步"); render();
+};
+
+const barsEl=document.getElementById("bars");
+function buildBars(){
+  barsEl.innerHTML="";
+  Object.keys(DATA.months).forEach(ym=>{ const m=DATA.months[ym]; const w=m.work,r=m.rest,l=m.legal,tot=m.count;
+    const row=document.createElement("div"); row.className="bar-row";
+    row.innerHTML=`<div class="mlbl">${parseInt(ym.split("-")[1])}月${m.settled?'·结':''}</div><div class="bar-track">`+
+      `<div class="seg work" style="width:${w/tot*100}%">${w||""}</div><div class="seg rest" style="width:${r/tot*100}%">${r||""}</div><div class="seg legal" style="width:${l/tot*100}%">${l||""}</div></div><div class="mtot">${tot}</div>`;
+    barsEl.appendChild(row); });
+}
+
+document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{ const f=c.dataset.f; filters[f]=!filters[f]; c.classList.toggle("on",filters[f]); render(); });
+document.getElementById("btn-cal").onclick=()=>{view="cal";document.getElementById("btn-cal").classList.add("on");document.getElementById("btn-list").classList.remove("on");render();};
+document.getElementById("btn-list").onclick=()=>{view="list";document.getElementById("btn-list").classList.add("on");document.getElementById("btn-cal").classList.remove("on");render();};
+
+function download(name,content,type){ const b=new Blob([content],{type}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+document.getElementById("btn-json").onclick=()=>download("王阿姨工作日历.json",JSON.stringify({meta:DATA.meta,months:DATA.months,records:DATA.records,periods:DATA.periods},null,2),"application/json");
+document.getElementById("btn-xlsx").onclick=()=>{
+  const daily=DATA.records.slice().sort((a,b)=>a.date<b.date?-1:1).map(r=>({"序号":r.seq,"日期":r.date,"星期":r.weekday,"工作日/休息日":r.status,"备注":r.note||""}));
+  const settle=DATA.periods.map(p=>({"期次":p.name,"起始":p.start,"结束":p.end,"结算日":p.settleDay,"状态":p.status,"结算金额":p.amount===""?"":p.amount}));
+  if(window.XLSX){ const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(daily),"工作日历");
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(settle),"工资结算");
+    XLSX.writeFile(wb,"王阿姨工作日历.xlsx"); }
+  else { const H=["序号","日期","星期","工作日/休息日","备注"];
+    const csv=[H.join(",")].concat(daily.map(r=>H.map(h=>{let v=r[h]===undefined?"":String(r[h]);if(/[",\n]/.test(v))v='"'+v.replace(/"/g,'""')+'"';return v;}).join(","))).join("\n");
+    download("王阿姨工作日历.csv","﻿"+csv,"text/csv;charset=utf-8"); }
+};
+
+async function startPoll(){
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer=setInterval(async ()=>{
+    if(editing) return;
+    try{ const d=await apiGet(); if(d.updatedAt!==DATA.updatedAt){ DATA=d; refreshAll(); setSync(true,"已连接 · 多人实时同步（刚刚更新）"); } }
+    catch(e){ setSync(false,"连接中断，正在重试…"); }
+  },4000);
+}
+function refreshAll(){
+  document.getElementById("t-total").textContent=DATA.meta.total;
+  document.getElementById("t-work").textContent=DATA.meta.work;
+  document.getElementById("t-rest").textContent=DATA.meta.rest;
+  document.getElementById("t-legal").textContent=DATA.meta.legal;
+  document.getElementById("t-note").textContent=DATA.records.filter(r=>r.note).length;
+  buildPeriods(); updateSettleSummary(); buildTabs(); render(); buildBars();
+}
+
+document.getElementById("pw-btn").onclick=doLogin;
+document.getElementById("pw").addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); });
+</script>
+</body>
+</html>
