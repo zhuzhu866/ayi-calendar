@@ -1,6 +1,9 @@
 import sys, os
 
 # PythonAnywhere 部署用 WSGI 入口
-# 在 PA 的 Web 面板里，把 WSGI 配置文件替换为本文件内容即可。
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# vendor/ 里已内置 flask 等依赖（纯 Python，无需在 PA 上 pip install）
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "vendor"))
+sys.path.insert(0, HERE)
+
 from app import app as application
