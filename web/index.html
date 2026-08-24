@@ -160,7 +160,7 @@
 <div class="wrap" id="app" style="display:none">
   <header>
     <h1>王阿姨工作日历 · 共享记录表</h1>
-    <div class="sub">统计周期 <b id="period"></b> ｜ 共 <b id="total"></b> 天 ｜ <b id="mc"></b> 个月</div>
+    <div class="sub">统计周期 <b id="period"></b> ｜ 共 <b id="total"></b> 天 ｜ <b id="mc"></b> 个工作周期</div>
     <div class="toolbar">
       <button id="btn-xlsx" class="primary">导出 Excel</button>
       <button id="btn-json">导出 JSON</button>
@@ -178,11 +178,11 @@
   </div>
 
   <div class="panel">
-    <h3>工资结算（每月 7 号结算，按期结算）</h3>
-    <div class="desc">每个工作周期约一个月，于次月 7 号结算。可编辑每期「结算状态」与「结算金额」，改动全员同步。</div>
+    <h3>工资结算（每个工作周期：当月 8 号 ~ 次月 7 号）</h3>
+    <div class="desc">工作周期从当月 8 号起算、到次月 7 号结束，于次月 7 号结算。可编辑每期「结算状态」(待结算/已结算) 与「结算金额」，改动全员同步。</div>
     <div class="settle-stats">
       <div class="stat"><div class="num" id="p-settled"></div><div class="lbl">已结算期数</div></div>
-      <div class="stat"><div class="num" id="p-unsettled"></div><div class="lbl">未结算期数</div></div>
+      <div class="stat"><div class="num" id="p-unsettled"></div><div class="lbl">待结算期数</div></div>
       <div class="stat s-work"><div class="num" id="p-amt"></div><div class="lbl">已结算金额(¥)</div></div>
       <div class="stat s-rest"><div class="num" id="p-due"></div><div class="lbl">待结算金额(¥)</div></div>
     </div>
@@ -213,7 +213,7 @@
   </div>
 
   <div class="panel chart">
-    <h3>各月出勤构成</h3>
+    <h3>各期出勤构成</h3>
     <div id="bars"></div>
   </div>
 
@@ -241,7 +241,7 @@
 <script>
 const STATUS_COLOR={"工作日":"work","休息日":"rest","法定日":"legal"};
 const TAG={"工作日":"班","休息日":"休","法定日":"法"};
-let PW="", DATA=null, editing=false, pollTimer=null, curMonth=null, view="cal";
+let PW="", DATA=null, editing=false, pollTimer=null, curPeriod=0, view="cal";
 let filters={"工作日":true,"休息日":true,"法定日":true};
 let editDate=null;
 
@@ -250,7 +250,7 @@ function setSync(on,text){ document.getElementById("sync-dot").className="dot"+(
 
 async function apiGet(){ const r=await fetch("/api/data",{headers:{"X-Password":PW}}); if(r.status===401) throw new Error("unauth"); return r.json(); }
 async function apiPost(){ const r=await fetch("/api/data",{method:"POST",headers:{"X-Password":PW,"Content-Type":"application/json"},
-  body:JSON.stringify({meta:DATA.meta,months:DATA.months,records:DATA.records,periods:DATA.periods})}); return r.ok; }
+  body:JSON.stringify({meta:DATA.meta,records:DATA.records,periods:DATA.periods})}); return r.ok; }
 
 async function doLogin(){
   const pw=document.getElementById("pw").value;
@@ -261,11 +261,11 @@ async function doLogin(){
 }
 
 function boot(){
-  curMonth=DATA.meta.period_start.slice(0,7);
+  curPeriod=0;
   // 顶部汇总
   document.getElementById("period").textContent=DATA.meta.period_start+" ~ "+DATA.meta.period_end;
   document.getElementById("total").textContent=DATA.meta.total;
-  document.getElementById("mc").textContent=DATA.meta.month_count;
+  document.getElementById("mc").textContent=DATA.meta.period_count;
   document.getElementById("t-total").textContent=DATA.meta.total;
   document.getElementById("t-work").textContent=DATA.meta.work;
   document.getElementById("t-rest").textContent=DATA.meta.rest;
@@ -296,7 +296,7 @@ function buildPeriods(){
       `<div class="pc-edit">`+
         `<div><label>状态</label><select class="p-status" data-i="${i}">`+
           `<option value="已结算" ${sd?"selected":""}>已结算</option>`+
-          `<option value="未结算" ${!sd?"selected":""}>未结算</option></select></div>`+
+          `<option value="待结算" ${!sd?"selected":""}>待结算</option></select></div>`+
         `<div><label>结算金额(元)</label><input type="number" min="0" step="0.01" class="p-amount" data-i="${i}" value="${p.amount===""?"":p.amount}" placeholder="待填"></div>`+
       `</div>`;
     periodsEl.appendChild(card);
@@ -317,12 +317,11 @@ function buildPeriods(){
 const tabsEl=document.getElementById("tabs");
 function buildTabs(){
   tabsEl.innerHTML="";
-  Object.keys(DATA.months).forEach(ym=>{
-    const m=DATA.months[ym];
+  DATA.periods.forEach((p,i)=>{
     const btn=document.createElement("div");
-    btn.className="tab"+(ym===curMonth?" active":""); btn.dataset.ym=ym;
-    btn.innerHTML=`${parseInt(ym.split("-")[1])}月`+(m.settled?'<span class="badge">已结算</span>':'');
-    btn.onclick=()=>{ curMonth=ym; [...tabsEl.children].forEach(t=>t.classList.toggle("active",t.dataset.ym===curMonth)); render(); };
+    btn.className="tab"+(i===curPeriod?" active":""); btn.dataset.i=i;
+    btn.innerHTML=`${p.name}`+(p.status==="已结算"?'<span class="badge">已结算</span>':'');
+    btn.onclick=()=>{ curPeriod=i; [...tabsEl.children].forEach(t=>t.classList.toggle("active",+t.dataset.i===curPeriod)); render(); };
     tabsEl.appendChild(btn);
   });
 }
@@ -333,26 +332,30 @@ function render(){
   if(view==="cal"){ document.getElementById("cal-view").style.display="block"; document.getElementById("list-view").style.display="none"; renderCal(); }
   else { document.getElementById("cal-view").style.display="none"; document.getElementById("list-view").style.display="block"; renderList(); }
 }
+function ymd(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function renderCal(){
-  const ym=curMonth, body=document.getElementById("cal-body"); body.innerHTML="";
-  const [y,mo]=ym.split("-").map(Number);
-  const off=(new Date(y,mo-1,1).getDay()+6)%7;
-  for(let i=0;i<off;i++){ const e=document.createElement("div"); e.className="day empty"; body.appendChild(e); }
-  const days=new Date(y,mo,0).getDate();
+  const p=DATA.periods[curPeriod];
+  const [sy,sm,sd]=p.start.split("-").map(Number);
+  const start=new Date(sy,sm-1,sd);
+  const lead=(start.getDay()+6)%7;
+  const body=document.getElementById("cal-body"); body.innerHTML="";
+  for(let i=0;i<lead;i++){ const e=document.createElement("div"); e.className="day empty"; body.appendChild(e); }
   const recMap={};
-  DATA.records.filter(r=>r.date.startsWith(ym)).forEach(r=>recMap[parseInt(r.date.slice(8,10))]=r);
-  for(let d=1; d<=days; d++){
-    const rec=recMap[d], cell=document.createElement("div");
-    if(!rec || !filters[rec.status]){ cell.className="day empty"; body.appendChild(cell); continue; }
+  DATA.records.filter(r=>r.date>=p.start && r.date<=p.end).forEach(r=>recMap[r.date]=r);
+  const cur=new Date(start);
+  while(ymd(cur)<=p.end){
+    const ds=ymd(cur), rec=recMap[ds], cell=document.createElement("div");
+    if(!rec || !filters[rec.status]){ cell.className="day empty"; body.appendChild(cell); cur.setDate(cur.getDate()+1); continue; }
     const st=STATUS_COLOR[rec.status]||"work";
     cell.className="day "+st;
-    cell.innerHTML=`<span class="tag">${TAG[rec.status]}</span><div class="dnum">${d}</div><div class="wd">${rec.weekday}</div>`+(rec.note?`<div class="note">${rec.note}</div>`:"");
+    cell.innerHTML=`<span class="tag">${TAG[rec.status]}</span><div class="dnum">${ds.slice(5)}</div><div class="wd">${rec.weekday}</div>`+(rec.note?`<div class="note">${rec.note}</div>`:"");
     cell.onclick=()=>openEditor(rec.date); body.appendChild(cell);
+    cur.setDate(cur.getDate()+1);
   }
 }
 function renderList(){
-  const ym=curMonth;
-  const rows=DATA.records.filter(r=>r.date.startsWith(ym)&&filters[r.status]).sort((a,b)=>a.date<b.date?-1:1);
+  const p=DATA.periods[curPeriod];
+  const rows=DATA.records.filter(r=>r.date>=p.start && r.date<=p.end && filters[r.status]).sort((a,b)=>a.date<b.date?-1:1);
   let html=`<table><thead><tr><th>日期</th><th>星期</th><th>状态</th><th>备注</th></tr></thead><tbody>`;
   rows.forEach(r=>{ const st=STATUS_COLOR[r.status]||"work";
     html+=`<tr data-date="${r.date}"><td>${r.date}</td><td>${r.weekday}</td><td><span class="pill ${st}">${r.status}</span></td><td>${r.note||"—"}</td></tr>`; });
@@ -378,11 +381,17 @@ document.getElementById("m-save").onclick=async ()=>{
 const barsEl=document.getElementById("bars");
 function buildBars(){
   barsEl.innerHTML="";
-  Object.keys(DATA.months).forEach(ym=>{ const m=DATA.months[ym]; const w=m.work,r=m.rest,l=m.legal,tot=m.count;
+  DATA.periods.forEach(p=>{
+    const recs=DATA.records.filter(r=>r.date>=p.start && r.date<=p.end);
+    const w=recs.filter(r=>r.status==="工作日").length;
+    const r=recs.filter(r=>r.status==="休息日").length;
+    const l=recs.filter(r=>r.status==="法定日").length;
+    const tot=recs.length;
     const row=document.createElement("div"); row.className="bar-row";
-    row.innerHTML=`<div class="mlbl">${parseInt(ym.split("-")[1])}月${m.settled?'·结':''}</div><div class="bar-track">`+
+    row.innerHTML=`<div class="mlbl">${p.name}${p.status==="已结算"?'·结':''}</div><div class="bar-track">`+
       `<div class="seg work" style="width:${w/tot*100}%">${w||""}</div><div class="seg rest" style="width:${r/tot*100}%">${r||""}</div><div class="seg legal" style="width:${l/tot*100}%">${l||""}</div></div><div class="mtot">${tot}</div>`;
-    barsEl.appendChild(row); });
+    barsEl.appendChild(row);
+  });
 }
 
 document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{ const f=c.dataset.f; filters[f]=!filters[f]; c.classList.toggle("on",filters[f]); render(); });
@@ -390,7 +399,7 @@ document.getElementById("btn-cal").onclick=()=>{view="cal";document.getElementBy
 document.getElementById("btn-list").onclick=()=>{view="list";document.getElementById("btn-list").classList.add("on");document.getElementById("btn-cal").classList.remove("on");render();};
 
 function download(name,content,type){ const b=new Blob([content],{type}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
-document.getElementById("btn-json").onclick=()=>download("王阿姨工作日历.json",JSON.stringify({meta:DATA.meta,months:DATA.months,records:DATA.records,periods:DATA.periods},null,2),"application/json");
+document.getElementById("btn-json").onclick=()=>download("王阿姨工作日历.json",JSON.stringify({meta:DATA.meta,records:DATA.records,periods:DATA.periods},null,2),"application/json");
 document.getElementById("btn-xlsx").onclick=()=>{
   const daily=DATA.records.slice().sort((a,b)=>a.date<b.date?-1:1).map(r=>({"序号":r.seq,"日期":r.date,"星期":r.weekday,"工作日/休息日":r.status,"备注":r.note||""}));
   const settle=DATA.periods.map(p=>({"期次":p.name,"起始":p.start,"结束":p.end,"结算日":p.settleDay,"状态":p.status,"结算金额":p.amount===""?"":p.amount}));
